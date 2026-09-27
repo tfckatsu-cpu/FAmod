@@ -32,4 +32,32 @@ void ShareFactoryAssistPatch::RenderUi() {
     ImGui::PopTextWrapPos();
     ImGui::EndTooltip();
   }
+
+  if (enabled_) {
+    ImGui::Indent();
+    ImGui::Checkbox(tr("Disable queue copying (first order)",
+                       {{Language::Russian,
+                         "Отключить копирование очереди (первый приказ)"},
+                        {Language::Chinese, "禁用队列复制（首个指令）"}}),
+                    &disable_queue_copy_);
+
+    if (ImGui::BeginItemTooltip()) {
+      ImGui::PushTextWrapPos(ImGui::GetFontSize() * 25.0f);
+      ImGui::TextUnformatted(
+          tr("When enabled, assisting another factory as the first command "
+             "sets produced units to assist it instead of copying its build "
+             "queue.",
+             {{Language::Russian,
+               "Если включено, первый приказ ассиста на другую фабрику задаёт "
+               "ассист произведёнными юнитами вместо копирования её очереди "
+               "постройки."},
+              {Language::Chinese, "启用后，对另一座工厂的首个协助指令将直接让生"
+                                  "产出的单位协助该工厂，"
+                                  "而不会复制其建造队列。"}})
+              .c_str());
+      ImGui::PopTextWrapPos();
+      ImGui::EndTooltip();
+    }
+    ImGui::Unindent();
+  }
 }

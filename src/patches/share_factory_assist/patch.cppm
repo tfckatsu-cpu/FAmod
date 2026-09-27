@@ -11,6 +11,7 @@ using namespace fa;
 export class ShareFactoryAssistPatch : public IPatch {
 public:
   inline static bool enabled_{false};
+  inline static bool disable_queue_copy_{false};
   inline static bool is_factory_requested_{false};
 
   [[nodiscard]] std::string_view Name() const noexcept override {
@@ -41,6 +42,7 @@ public:
 
   void BindSettings(SettingsBinder &b) override {
     b.Bind("ShareFactoryAssist.enabled", enabled_, true);
+    b.Bind("ShareFactoryAssist.disable_queue_copy", disable_queue_copy_, false);
   }
 };
 
@@ -253,8 +255,9 @@ void __stdcall OnIssueCommand(WeakSet<UserEntity> *units,
   }
 
   // Factory-on-factory assist with clear_queue (first command, overwriting
-  // queue): preserve default behavior (copies build queue).
-  if (clear_queue && IsTargetFactory(cmd)) {
+  // queue): preserve default behavior (copies build queue) unless disabled.
+  if (!ShareFactoryAssistPatch::disable_queue_copy_ && clear_queue &&
+      IsTargetFactory(cmd)) {
     EngineThunks::Instance().issue_cmd_orig(units, cmd, clear_queue);
     return;
   }
@@ -282,6 +285,11 @@ void ShareFactoryAssistPatch::Apply() {
   static ConDescReg share_factory_assist_cmd{
       "ui_ShareFactoryAssistCommandToUnits",
       "Share factory assist command to units (true/false)", &enabled_};
+  static ConDescReg share_factory_assist_disable_queue_copy_cmd{
+      "ui_ShareFactoryAssistDisableQueueCopy",
+      "Disable copying factory build queue on first assist command "
+      "(true/false)",
+      &disable_queue_copy_};
   // Keep generated JIT code buffer alive in memory across the process lifetime
   static CategoryHookTrampoline split_tramp(&is_factory_requested_);
   // Keep generated JIT code buffer alive in memory across the process lifetime
