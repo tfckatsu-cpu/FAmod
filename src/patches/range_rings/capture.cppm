@@ -6,7 +6,13 @@ import fa;
 
 namespace patch::range_rings {
 
+enum class CaptureRangeMode : int {
+  kAuto = 0,     // 5.0 + unitFpMax for mobile, 10.0 + unitFpMax for immobile
+  kMaxRange = 1, // 10.0 + unitFpMax for all units
+};
+
 inline bool capture_enabled_{true};
+inline CaptureRangeMode capture_mode_{CaptureRangeMode::kAuto};
 inline std::array<float, 4> capture_color_{0.0f, 1.0f, 1.0f, 0.5f};
 
 // Formats float RGBA to Forged Alliance Lua 'AARRGGBB' hex string
@@ -22,9 +28,39 @@ inline std::array<float, 4> capture_color_{0.0f, 1.0f, 1.0f, 0.5f};
   return std::format("{:02X}{:02X}{:02X}{:02X}", a, r, g, b);
 }
 
+[[nodiscard]] inline float
+GetUnitFootprintMaxSize(const fa::RUnitBlueprint *blueprint) noexcept {
+  if (!blueprint)
+    return 0.0f;
+  const auto *fp = blueprint->mPhysics.mFootprint ? blueprint->mPhysics.mFootprint
+                                                  : &blueprint->mFootprint;
+  return static_cast<float>(std::max(fp->mSizeX, fp->mSizeZ));
+}
+
+[[nodiscard]] inline bool
+IsImmobile(const fa::RUnitBlueprint *blueprint) noexcept {
+  return !blueprint || blueprint->mPhysics.mMotionType == fa::RULEUMT_None ||
+         blueprint->mPhysics.mMaxSpeed <= 0.0f;
+}
+
 [[nodiscard]] bool
 HasCaptureCapability(const fa::RUnitBlueprint *blueprint) noexcept {
-  return blueprint && blueprint->mEconomy.mMaxBuildDistance > 0.0f;
+  if (!blueprint)
+    return false;
+  return (blueprint->mGeneral.mCommandCaps & fa::RULEUCC_Capture) != 0 ||
+         blueprint->mEconomy.mMaxBuildDistance > 0.0f;
+}
+
+[[nodiscard]] inline float
+CalculateCaptureRange(const fa::RUnitBlueprint *blueprint,
+                      bool is_capturing = false) noexcept {
+  const float fp_max = GetUnitFootprintMaxSize(blueprint);
+  const float base_range =
+      (capture_mode_ == CaptureRangeMode::kMaxRange || IsImmobile(blueprint) ||
+       is_capturing)
+          ? 10.0f
+          : 5.0f;
+  return base_range + fp_max;
 }
 
 struct CaptureExtractor : public fa::RangeExtractor {
@@ -36,7 +72,7 @@ struct CaptureExtractor : public fa::RangeExtractor {
     out->x = pos->x;
     out->z = pos->z;
     out->min_range = 0.0f;
-    out->max_range = blueprint->mEconomy.mMaxBuildDistance;
+    out->max_range = CalculateCaptureRange(blueprint);
     return true;
   }
 
@@ -49,10 +85,13 @@ struct CaptureExtractor : public fa::RangeExtractor {
     if (!HasCaptureCapability(blueprint))
       return false;
 
+    const bool is_capturing =
+        (unit->mUnitVarDat.mUnitStates & fa::UNITSTATEMASK_Capturing) != 0;
+
     out->x = unit->mTransform.pos.x;
     out->z = unit->mTransform.pos.z;
     out->min_range = 0.0f;
-    out->max_range = blueprint->mEconomy.mMaxBuildDistance;
+    out->max_range = CalculateCaptureRange(blueprint, is_capturing);
     return true;
   }
 };

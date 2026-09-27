@@ -176,6 +176,56 @@ void RenderRangeRingsUi() {
 
   if (capture_enabled_) {
     ImGui::Indent();
+
+    int mode_val = std::to_underlying(capture_mode_);
+    bool mode_changed = false;
+
+    mode_changed |= ImGui::RadioButton(
+        tr("Auto (5 + FP / 10 + FP for immobile)##Capture",
+           {{Language::Russian,
+             "Авто (5 + размер базы / 10 для неподвижных)##Capture"},
+            {Language::Chinese, "自动（移动 5+基底 / 静态 10+基底）##Capture"}})
+            .data(),
+        &mode_val, std::to_underlying(CaptureRangeMode::kAuto));
+    ImGui::SetItemTooltip(
+        "%s",
+        tr("Default engine behavior: 5 + unit footprint for mobile units "
+           "(range to start capturing without moving), and 10 + footprint for "
+           "immobile structures (or when move is aborted).",
+           {{Language::Russian,
+             "Поведение движка по умолчанию: 5 + размер базы юнита для "
+             "мобильных (дистанция начала захвата без сближения), и 10 + "
+             "размер базы для неподвижных (или при отмене движения)."},
+            {Language::Chinese,
+             "引擎默认行为：移动单位为 5 + 单位基底（无需移动即可开始捕获的"
+             "范围），静态建筑为 10 + 基底（或移动中断时）。"}})
+            .c_str());
+
+    mode_changed |= ImGui::RadioButton(
+        tr("Max range (10 + FP for all)##Capture",
+           {{Language::Russian,
+             "Максимальный радиус (10 + размер базы для всех)##Capture"},
+            {Language::Chinese, "最大范围（所有单位 10+基底）##Capture"}})
+            .data(),
+        &mode_val, std::to_underlying(CaptureRangeMode::kMaxRange));
+    ImGui::SetItemTooltip(
+        "%s",
+        tr("Shows the maximum hold/leash range (10 + unit footprint) before "
+           "capturing aborts, or capture range when using Navigator:AbortMove().",
+           {{Language::Russian,
+             "Показывает максимальную дистанцию удержания луча (10 + размер "
+             "базы), при превышении которой захват срывается, либо радиус при "
+             "остановке движения через Navigator:AbortMove()."},
+            {Language::Chinese,
+             "显示捕获中断前的最大保持距离（10 + 单位基底），或使用 "
+             "Navigator:AbortMove() 中止移动时的捕获范围。"}})
+            .c_str());
+
+    if (mode_changed) {
+      capture_mode_ = static_cast<CaptureRangeMode>(mode_val);
+    }
+
+    ImGui::Spacing();
     ImGui::ColorEdit4(
         tr("Ring Color##Capture", {{Language::Russian, "Цвет кольца##Capture"},
                                    {Language::Chinese, "范围圈颜色##Capture"}})
