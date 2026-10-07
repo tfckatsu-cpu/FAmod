@@ -232,6 +232,43 @@ void RenderPostProcessUi() {
   if (!g_settings.enabled) {
     ImGui::EndDisabled();
   }
+
+  // Minimap dark theme (independent from the world post-processing toggle)
+  ImGui::Separator();
+  ImGui::Checkbox(
+      tr("Minimap dark theme",
+         {{Language::Russian, "Тёмная тема миникарты"},
+          {Language::Chinese, "小地图暗色主题"}}),
+      &g_minimap.enabled);
+
+  if (g_minimap.enabled) {
+    ImGui::SliderFloat(
+        tr("Minimap brightness",
+           {{Language::Russian, "Яркость миникарты"},
+            {Language::Chinese, "小地图亮度"}}),
+        &g_minimap.brightness, 0.05f, 1.0f, "%.2f");
+    ImGui::SliderFloat(
+        tr("Minimap contrast", {{Language::Russian, "Контраст миникарты"},
+                                {Language::Chinese, "小地图对比度"}}),
+        &g_minimap.contrast, 0.5f, 1.5f, "%.2f");
+    ImGui::SliderFloat(
+        tr("Minimap saturation",
+           {{Language::Russian, "Насыщенность миникарты"},
+            {Language::Chinese, "小地图饱和度"}}),
+        &g_minimap.saturation, 0.0f, 1.5f, "%.2f");
+    ImGui::SliderFloat(
+        tr("Minimap color temperature",
+           {{Language::Russian, "Температура цвета миникарты"},
+            {Language::Chinese, "小地图色温"}}),
+        &g_minimap.color_temp, -1.0f, 1.0f, "%.2f");
+
+    // Diagnostics: confirms that the minimap render hook actually fires
+    ImGui::TextDisabled(
+        "minimap hook hits: %u, target %ux%u, viewport %u,%u %ux%u",
+        g_minimap_debug.hits, g_minimap_debug.rt_w, g_minimap_debug.rt_h,
+        g_minimap_debug.vp_x, g_minimap_debug.vp_y, g_minimap_debug.vp_w,
+        g_minimap_debug.vp_h);
+  }
 }
 
 } // namespace patch::post_process

@@ -15,13 +15,19 @@ namespace patch::post_process {
 
 class PostProcessRenderer {
 private:
-  ComPtr<IDirect3DTexture9> intermediate_texture_;
-  ComPtr<IDirect3DSurface9> intermediate_surface_;
-  ComPtr<IDirect3DVertexBuffer9> vertex_buffer_;
-  ComPtr<IDirect3DStateBlock9> state_block_;
+  // Two independent resource sets: slot 0 = main world, slot 1 = minimap.
+  // Keeping them separate avoids re-creating textures every frame when the
+  // minimap renders into a differently sized target than the main view.
+  struct Slot {
+    ComPtr<IDirect3DTexture9> texture;
+    ComPtr<IDirect3DSurface9> surface;
+    ComPtr<IDirect3DVertexBuffer9> vb;
+    ComPtr<IDirect3DStateBlock9> state;
+    UINT width{0};
+    UINT height{0};
+  };
+  std::array<Slot, 2> slots_;
   ComPtr<IDirect3DPixelShader9> pixel_shader_;
-  UINT texture_width_{0};
-  UINT texture_height_{0};
   bool shader_compilation_failed_{false};
   UINT frame_count_{0};
 
@@ -114,36 +120,37 @@ private:
     return SUCCEEDED(ps_hr) && pixel_shader_;
   }
 
-  [[nodiscard]] bool EnsureResources(IDirect3DDevice9 *device, UINT width,
-                                     UINT height, D3DFORMAT format) {
-    if (intermediate_texture_ && intermediate_surface_ && vertex_buffer_ &&
-        state_block_ && texture_width_ == width && texture_height_ == height) {
+  [[nodiscard]] bool EnsureResources(Slot &s, IDirect3DDevice9 *device,
+                                     UINT width, UINT height,
+                                     D3DFORMAT format) {
+    if (s.texture && s.surface && s.vb &&
+        s.state && s.width == width && s.height == height) {
       return true;
     }
 
-    ReleaseResources();
+    ReleaseSlot(s);
 
     // 1. Create render target texture
     if (FAILED(device->CreateTexture(
             width, height, 1, D3DUSAGE_RENDERTARGET, format, D3DPOOL_DEFAULT,
-            intermediate_texture_.ReleaseAndGetAddressOf(), nullptr)) ||
-        !intermediate_texture_) {
+            s.texture.ReleaseAndGetAddressOf(), nullptr)) ||
+        !s.texture) {
       return false;
     }
 
-    if (FAILED(intermediate_texture_->GetSurfaceLevel(
-            0, intermediate_surface_.ReleaseAndGetAddressOf())) ||
-        !intermediate_surface_) {
-      ReleaseResources();
+    if (FAILED(s.texture->GetSurfaceLevel(
+            0, s.surface.ReleaseAndGetAddressOf())) ||
+        !s.surface) {
+      ReleaseSlot(s);
       return false;
     }
 
     // 2. Create static GPU vertex buffer for fullscreen triangle
     if (FAILED(device->CreateVertexBuffer(
             sizeof(ScreenVertex) * 3, D3DUSAGE_WRITEONLY, kFVF, D3DPOOL_DEFAULT,
-            vertex_buffer_.ReleaseAndGetAddressOf(), nullptr)) ||
-        !vertex_buffer_) {
-      ReleaseResources();
+            s.vb.ReleaseAndGetAddressOf(), nullptr)) ||
+        !s.vb) {
+      ReleaseSlot(s);
       return false;
     }
 
@@ -155,33 +162,33 @@ private:
         {-0.5f, 2.0f * h - 0.5f, 0.0f, 1.0f, 0.0f, 2.0f},
     };
 
-    if (ScopedVertexBufferLock lock(vertex_buffer_.Get(), 0, sizeof(triangle),
+    if (ScopedVertexBufferLock lock(s.vb.Get(), 0, sizeof(triangle),
                                     0);
         lock) {
       std::memcpy(lock.data(), triangle, sizeof(triangle));
     } else {
-      ReleaseResources();
+      ReleaseSlot(s);
       return false;
     }
 
     // 3. Create persistent D3D9 StateBlock
     if (FAILED(device->CreateStateBlock(
-            D3DSBT_ALL, state_block_.ReleaseAndGetAddressOf())) ||
-        !state_block_) {
-      ReleaseResources();
+            D3DSBT_ALL, s.state.ReleaseAndGetAddressOf())) ||
+        !s.state) {
+      ReleaseSlot(s);
       return false;
     }
 
-    texture_width_ = width;
-    texture_height_ = height;
+    s.width = width;
+    s.height = height;
     return true;
   }
 
-  void SetupRenderStates(IDirect3DDevice9 *device,
+  void SetupRenderStates(Slot &s, IDirect3DDevice9 *device,
                          IDirect3DSurface9 *backbuffer, UINT width,
                          UINT height) noexcept {
     device->SetRenderTarget(0, backbuffer);
-    device->SetTexture(0, intermediate_texture_.Get());
+    device->SetTexture(0, s.texture.Get());
 
     // Explicitly set viewport to cover the entire render target surface
     const D3DVIEWPORT9 vp{
@@ -228,13 +235,19 @@ public:
     return instance;
   }
 
+  static void ReleaseSlot(Slot &s) noexcept {
+    s.state.Reset();
+    s.vb.Reset();
+    s.surface.Reset();
+    s.texture.Reset();
+    s.width = 0;
+    s.height = 0;
+  }
+
   void ReleaseResources() noexcept {
-    state_block_.Reset();
-    vertex_buffer_.Reset();
-    intermediate_surface_.Reset();
-    intermediate_texture_.Reset();
-    texture_width_ = 0;
-    texture_height_ = 0;
+    for (auto &slot : slots_) {
+      ReleaseSlot(slot);
+    }
   }
 
   void OnReset() noexcept {
@@ -243,61 +256,131 @@ public:
     shader_compilation_failed_ = false;
   }
 
-  void Render(IDirect3DDevice9 *device) {
-    if (!device || !g_settings.enabled)
+  // Builds shader settings for the minimap: only brightness/saturation/tint
+  // style adjustments, no AA / sharpening / vignette / grain.
+  [[nodiscard]] static Settings MakeMinimapSettings() noexcept {
+    Settings s{};
+    s.enabled = true;
+    s.fxaa_enabled = false;
+    s.exposure = std::log2(std::clamp(g_minimap.brightness, 0.02f, 2.0f));
+    s.contrast = g_minimap.contrast;
+    s.saturation = g_minimap.saturation;
+    s.color_temp = g_minimap.color_temp;
+    s.gamma = g_minimap.gamma;
+    s.black_level = g_minimap.black_level;
+    return s;
+  }
+
+  // minimap == false: called from the main world hook.
+  // minimap == true:  called from the minimap (Cartographic) render path.
+  void Render(IDirect3DDevice9 *device, bool minimap) {
+    if (!device || (minimap ? !g_minimap.enabled : !g_settings.enabled))
       return;
 
     if (device->TestCooperativeLevel() != D3D_OK)
       return;
 
-    ComPtr<IDirect3DSurface9> backbuffer;
-    if (FAILED(
-            device->GetRenderTarget(0, backbuffer.ReleaseAndGetAddressOf())) ||
-        !backbuffer) {
+    ComPtr<IDirect3DSurface9> target;
+    if (FAILED(device->GetRenderTarget(0, target.ReleaseAndGetAddressOf())) ||
+        !target) {
       return;
     }
 
     D3DSURFACE_DESC desc{};
-    if (FAILED(backbuffer->GetDesc(&desc))) {
+    if (FAILED(target->GetDesc(&desc))) {
       return;
     }
 
-    if (!EnsureResources(device, desc.Width, desc.Height, desc.Format) ||
+    // Size of the real window backbuffer, used to tell the main world view
+    // from smaller views (minimap).
+    UINT main_w = desc.Width;
+    UINT main_h = desc.Height;
+    {
+      ComPtr<IDirect3DSurface9> main_bb;
+      D3DSURFACE_DESC main_desc{};
+      if (SUCCEEDED(device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO,
+                                          main_bb.ReleaseAndGetAddressOf())) &&
+          main_bb && SUCCEEDED(main_bb->GetDesc(&main_desc))) {
+        main_w = main_desc.Width;
+        main_h = main_desc.Height;
+      }
+    }
+
+    D3DVIEWPORT9 vp{};
+    device->GetViewport(&vp);
+
+    const bool is_minimap = minimap;
+    const bool own_small_target = desc.Width < main_w || desc.Height < main_h;
+    const double vp_area = static_cast<double>(vp.Width) * vp.Height;
+    const double rt_area = static_cast<double>(desc.Width) * desc.Height;
+
+    if (is_minimap) {
+      g_minimap_debug = {.rt_w = desc.Width, .rt_h = desc.Height,
+                         .vp_x = vp.X,       .vp_y = vp.Y,
+                         .vp_w = vp.Width,   .vp_h = vp.Height,
+                         .hits = g_minimap_debug.hits + 1};
+      // Minimap shares the full-screen target and we cannot isolate it from
+      // the viewport: do nothing rather than darken the whole screen.
+      if (!own_small_target && vp_area >= rt_area * 0.9)
+        return;
+    }
+
+    const Settings active = is_minimap ? MakeMinimapSettings() : g_settings;
+
+    // Region to process: whole target for the main view or an own minimap
+    // target, viewport rectangle if the minimap shares the backbuffer.
+    RECT rect{0, 0, static_cast<LONG>(desc.Width),
+              static_cast<LONG>(desc.Height)};
+    if (is_minimap && !own_small_target) {
+      rect.left = std::clamp<LONG>(vp.X, 0, desc.Width);
+      rect.top = std::clamp<LONG>(vp.Y, 0, desc.Height);
+      rect.right = std::clamp<LONG>(vp.X + vp.Width, 0, desc.Width);
+      rect.bottom = std::clamp<LONG>(vp.Y + vp.Height, 0, desc.Height);
+      if (rect.right <= rect.left || rect.bottom <= rect.top)
+        return;
+    }
+
+    Slot &s = slots_[is_minimap ? 1 : 0];
+    if (!EnsureResources(s, device, desc.Width, desc.Height, desc.Format) ||
         !CompileShader(device)) {
       return;
     }
 
     // 1. Capture entire D3D9 pipeline state BEFORE any modifications
-    state_block_->Capture();
+    s.state->Capture();
 
-    // 3. Copy 3D world render output into the intermediate texture (fast GPU
-    // blit)
-    if (FAILED(device->StretchRect(backbuffer.Get(), nullptr,
-                                   intermediate_surface_.Get(), nullptr,
+    // 2. Copy the already rendered region into the intermediate texture
+    if (FAILED(device->StretchRect(target.Get(), &rect, s.surface.Get(), &rect,
                                    D3DTEXF_NONE))) {
-      state_block_->Apply();
+      s.state->Apply();
       return;
     }
 
-    // 4. Setup render states for post-process fullscreen blit
-    SetupRenderStates(device, backbuffer.Get(), desc.Width, desc.Height);
+    // 3. Setup render states for the post-process blit
+    SetupRenderStates(s, device, target.Get(), desc.Width, desc.Height);
 
-    // 5. Precompute linear math on CPU & pack into constant buffer
+    // Limit drawing to the minimap rectangle so nothing else is touched
+    if (is_minimap && !own_small_target) {
+      device->SetScissorRect(&rect);
+      device->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
+    }
+
+    // 4. Precompute linear math on CPU & pack into constant buffer
     const auto constants = ShaderConstants::FromSettings(
-        g_settings, static_cast<float>(desc.Width),
+        active, static_cast<float>(desc.Width),
         static_cast<float>(desc.Height), static_cast<float>(frame_count_++));
 
     device->SetPixelShader(pixel_shader_.Get());
     device->SetPixelShaderConstantF(0, constants.data(),
                                     constants.register_count());
 
-    // 6. Draw single fullscreen triangle from GPU VRAM
-    device->SetStreamSource(0, vertex_buffer_.Get(), 0, sizeof(ScreenVertex));
+    // 5. Draw single fullscreen triangle from GPU VRAM
+    device->SetStreamSource(0, s.vb.Get(), 0, sizeof(ScreenVertex));
     device->SetFVF(kFVF);
     device->DrawPrimitive(D3DPT_TRIANGLELIST, 0, 1);
 
-    // 7. Restore original pipeline state
-    state_block_->Apply();
+    // 6. Restore original pipeline state
+    s.state->Apply();
   }
 };
 

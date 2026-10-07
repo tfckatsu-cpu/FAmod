@@ -456,4 +456,27 @@ struct Settings : PresetValues {
 
 inline Settings g_settings;
 
+// Separate, deliberately small set of adjustments applied only to the minimap.
+struct MinimapSettings {
+  bool enabled{false};
+  float brightness{0.35f}; // multiplier: 1.0 = unchanged, lower = darker
+  float contrast{1.0f};
+  float saturation{0.85f};
+  float color_temp{0.0f};
+  float gamma{1.0f};
+  float black_level{0.0f};
+};
+
+inline MinimapSettings g_minimap;
+
+// Filled by the renderer each time the hook fires, shown in the UI so the
+// minimap detection heuristic can be verified in-game.
+struct MinimapDebugInfo {
+  unsigned rt_w{0}, rt_h{0};
+  unsigned vp_x{0}, vp_y{0}, vp_w{0}, vp_h{0};
+  unsigned hits{0}; // how many times the minimap hook has fired
+};
+
+inline MinimapDebugInfo g_minimap_debug;
+
 } // namespace patch::post_process

@@ -3,6 +3,9 @@ export module patch.post_process;
 import std;
 import core;
 
+// Called from the minimap (Cartographic) render path by the minimap_ranges patch.
+export void RenderMinimapPostProcess();
+
 export class PostProcessPatch : public IPatch {
 public:
   [[nodiscard]] std::string_view Name() const noexcept override {

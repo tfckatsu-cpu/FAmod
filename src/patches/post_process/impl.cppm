@@ -16,7 +16,7 @@ import imgui_hook;
 namespace patch::post_process {
 
 void OnBeforeRenderUI() {
-  PostProcessRenderer::Instance().Render(ImGuiHook::D3D9::Device);
+  PostProcessRenderer::Instance().Render(ImGuiHook::D3D9::Device, false);
 }
 
 // Hook placed at 0x007F95AE right after 3D world rendering (terrain, meshes,
@@ -42,6 +42,11 @@ struct PatchRefractingEffectsCall : public Xbyak::CodeGenerator {
 };
 
 } // namespace patch::post_process
+
+void RenderMinimapPostProcess() {
+  patch::post_process::PostProcessRenderer::Instance().Render(
+      ImGuiHook::D3D9::Device, true);
+}
 
 void PostProcessPatch::Apply() {
   ImGuiHook::OnReset +=
@@ -81,4 +86,11 @@ void PostProcessPatch::BindSettings(SettingsBinder &b) {
   b.Bind("PostProcess.sCurve", g_settings.s_curve, 0.0f);
   b.Bind("PostProcess.technicolor", g_settings.technicolor, 0.0f);
   b.Bind("PostProcess.dpxFilm", g_settings.dpx_film, 0.0f);
+  b.Bind("PostProcess.minimapEnabled", g_minimap.enabled, false);
+  b.Bind("PostProcess.minimapBrightness", g_minimap.brightness, 0.35f);
+  b.Bind("PostProcess.minimapContrast", g_minimap.contrast, 1.0f);
+  b.Bind("PostProcess.minimapSaturation", g_minimap.saturation, 0.85f);
+  b.Bind("PostProcess.minimapColorTemp", g_minimap.color_temp, 0.0f);
+  b.Bind("PostProcess.minimapGamma", g_minimap.gamma, 1.0f);
+  b.Bind("PostProcess.minimapBlackLevel", g_minimap.black_level, 0.0f);
 }

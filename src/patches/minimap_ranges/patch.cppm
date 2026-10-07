@@ -4,6 +4,7 @@ module;
 export module patch.minimap_ranges;
 import fa;
 import core;
+import patch.post_process;
 
 using namespace fa;
 
@@ -46,6 +47,13 @@ struct DisableMinimapDebugPatch : public Xbyak::CodeGenerator {
 
 struct MinimapRangeRenderTrampoline : public Xbyak::CodeGenerator {
   MinimapRangeRenderTrampoline() {
+    // Minimap terrain has been drawn at this point, range rings, meshes and
+    // icons have not: run the minimap dark theme here, preserving all state.
+    pushfd();
+    pushad();
+    call(reinterpret_cast<const void *>(&RenderMinimapPostProcess));
+    popad();
+    popfd();
     mov(al, byte[reinterpret_cast<const void *>(
                 &MinimapRangesPatch::render_ranges_)]);
     test(al, al);
