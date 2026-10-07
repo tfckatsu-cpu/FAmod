@@ -243,6 +243,11 @@ void RenderPostProcessUi() {
 
   if (g_minimap.enabled) {
     ImGui::SliderFloat(
+        tr("Minimap lightness inversion",
+           {{Language::Russian, "Инверсия светлоты миникарты"},
+            {Language::Chinese, "小地图亮度反转"}}),
+        &g_minimap.invert, 0.0f, 1.0f, "%.2f");
+    ImGui::SliderFloat(
         tr("Minimap brightness",
            {{Language::Russian, "Яркость миникарты"},
             {Language::Chinese, "小地图亮度"}}),
@@ -261,6 +266,16 @@ void RenderPostProcessUi() {
            {{Language::Russian, "Температура цвета миникарты"},
             {Language::Chinese, "小地图色温"}}),
         &g_minimap.color_temp, -1.0f, 1.0f, "%.2f");
+
+    ImGui::SliderFloat(
+        tr("Minimap gamma", {{Language::Russian, "Гамма миникарты"},
+                             {Language::Chinese, "小地图伽马"}}),
+        &g_minimap.gamma, 0.5f, 2.0f, "%.2f");
+    ImGui::SliderFloat(
+        tr("Minimap black level",
+           {{Language::Russian, "Уровень чёрного миникарты"},
+            {Language::Chinese, "小地图黑电平"}}),
+        &g_minimap.black_level, -0.2f, 0.3f, "%.2f");
 
     // Diagnostics: confirms that the minimap render hook actually fires
     ImGui::TextDisabled(

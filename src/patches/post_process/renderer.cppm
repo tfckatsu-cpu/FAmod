@@ -48,7 +48,7 @@ private:
         highlights; // c5: highlight_r, highlight_g, highlight_b, split_balance
     std::array<float, 4>
         extra; // c6: vibrance, bleach_bypass, black_level, s_curve
-    std::array<float, 4> film; // c7: technicolor, dpx_film, frame_seed, 0
+    std::array<float, 4> film; // c7: technicolor, dpx_film, frame_seed, invert
 
     [[nodiscard]] static ShaderConstants
     FromSettings(const Settings &s, float width, float height,
@@ -73,7 +73,7 @@ private:
           .highlights = {s.highlight_tint[0], s.highlight_tint[1],
                          s.highlight_tint[2], s.split_balance},
           .extra = {s.vibrance, s.bleach_bypass, s.black_level, s.s_curve},
-          .film = {s.technicolor, s.dpx_film, frame_seed, 0.0f},
+          .film = {s.technicolor, s.dpx_film, frame_seed, s.invert},
       };
     }
 
@@ -262,6 +262,7 @@ public:
     Settings s{};
     s.enabled = true;
     s.fxaa_enabled = false;
+    s.invert = std::clamp(g_minimap.invert, 0.0f, 1.0f);
     s.exposure = std::log2(std::clamp(g_minimap.brightness, 0.02f, 2.0f));
     s.contrast = g_minimap.contrast;
     s.saturation = g_minimap.saturation;

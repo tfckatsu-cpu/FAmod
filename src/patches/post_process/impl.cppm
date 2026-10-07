@@ -87,7 +87,8 @@ void PostProcessPatch::BindSettings(SettingsBinder &b) {
   b.Bind("PostProcess.technicolor", g_settings.technicolor, 0.0f);
   b.Bind("PostProcess.dpxFilm", g_settings.dpx_film, 0.0f);
   b.Bind("PostProcess.minimapEnabled", g_minimap.enabled, false);
-  b.Bind("PostProcess.minimapBrightness", g_minimap.brightness, 0.35f);
+  b.Bind("PostProcess.minimapInvert", g_minimap.invert, 1.0f);
+  b.Bind("PostProcess.minimapBrightness", g_minimap.brightness, 1.0f);
   b.Bind("PostProcess.minimapContrast", g_minimap.contrast, 1.0f);
   b.Bind("PostProcess.minimapSaturation", g_minimap.saturation, 0.85f);
   b.Bind("PostProcess.minimapColorTemp", g_minimap.color_temp, 0.0f);

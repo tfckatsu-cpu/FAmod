@@ -56,6 +56,7 @@ struct PresetValues {
   float s_curve{0.0f};
   float technicolor{0.0f};
   float dpx_film{0.0f};
+  float invert{0.0f}; // lightness inversion (hue preserving), used by minimap theme
 };
 
 // Preset data table: kPresets[i] corresponds to Preset(i + 1), skipping Custom.
@@ -459,7 +460,8 @@ inline Settings g_settings;
 // Separate, deliberately small set of adjustments applied only to the minimap.
 struct MinimapSettings {
   bool enabled{false};
-  float brightness{0.35f}; // multiplier: 1.0 = unchanged, lower = darker
+  float invert{1.0f};      // 0 = off, 1 = full lightness inversion
+  float brightness{1.0f};  // multiplier: 1.0 = unchanged, lower = darker
   float contrast{1.0f};
   float saturation{0.85f};
   float color_temp{0.0f};

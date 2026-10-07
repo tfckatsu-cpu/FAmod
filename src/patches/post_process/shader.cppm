@@ -226,6 +226,16 @@ float4 main(float2 texCoord : TEXCOORD0) : COLOR0
         color.rgb = ApplyCAS(s0, texCoord, rcpFrame, color.rgb, sharpening);
     }
     
+    // 2b. Hue-preserving lightness inversion (minimap dark theme).
+    //     Shifts every channel equally so luma becomes (1 - luma): light
+    //     terrain turns dark, black contour lines turn light, hue is kept.
+    float invertAmount = c_Film.w;
+    if (invertAmount > 0.001f) {
+        float l = dot(color.rgb, float3(0.299f, 0.587f, 0.114f));
+        float3 flipped = saturate(color.rgb + (1.0f - 2.0f * l));
+        color.rgb = lerp(color.rgb, flipped, invertAmount);
+    }
+
     // 3. Combined Exposure, Brightness & Contrast (Single MAD instruction folded on CPU)
     color.rgb = color.rgb * c_ScaleBias.x + c_ScaleBias.y;
     
